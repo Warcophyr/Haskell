@@ -1,15 +1,53 @@
+datatype HaskellType = 
+    Integer of int 
+  | Real of real
+  | Character of char
+  | Boolean of bool 
+
 datatype Haskell = 
-    Const of int
+    HaskellType of HaskellType
   | Var of string 
+  | Eq of Haskell * Haskell
+  | Implies of Haskell * Haskell
+  | If of Haskell * Haskell * Haskell
   | Let of string * Haskell * Haskell
-  | IfThenElse of Haskell * Haskell * Haskell
-  | Fn of string * Haskell
-  | Rec of Haskell * Haskell
+  | Fn of string * string * Haskell * Haskell
+  | Call of string * Haskell
   | Plus of Haskell * Haskell
   | Minus of Haskell * Haskell
   | Times of Haskell * Haskell;
 
-datatype Entry = VariableBinding of string * Haskell * Entry list| CloserExp of  string * string * Haskell * Haskell * Entry list;
+datatype Entry = VariableBinding of string * (Haskell * (Entry list))| FunctionClosure of  string * (string * Haskell * Haskell * (Entry list));
+
+(* val env : Entry list [] *)
+
+fun search (string, VariableBinding(variable, assignment):: enviroment) =
+    if String.compare(string, variable) = EQUAL then 
+      SOME (VariableBinding(variable, assignment))
+    else 
+      search(string, enviroment)
+  | search(string, FunctionClosure(function, closere):: enviroment) =
+    if String.compare(string, function) = EQUAL then 
+      SOME (FunctionClosure(function, closere))
+    else 
+      search(string, enviroment)
+  |search(_, []) = NONE;
+
+fun eval (HaskellType haskellType, _) = SOME haskellType
+  | eval (Var variable, environment) =
+    (case search(variable, environment) of
+      SOME (VariableBinding(_, (expression, associted_environment))) =>
+        eval (expression, associated_enviroment)
+    | _ => NONE)
+  | eval (Implies(a, b), environment) =
+    (case (eval(a, environment), eval(n, environment)) of
+      (SOME (Boolean a), SOME (Boolean b)) => SOME (Boolean (not a orelse b))
+    | _ => NONE)
+  | eval (If(condition, condizionTrue, conditionFalse), environment) =
+    (case eval(condition, environment) of
+      SOME (Boolean true) => eval (condizionTrue, environment)
+    | SOME (Boolean false) => eval (condizionFalse, environment)
+    |_ => NONE)
 
 (* datatype 'a env = Bind of string * 'a * 'a env | EmptyEnv;
 
