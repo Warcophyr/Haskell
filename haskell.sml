@@ -1,10 +1,11 @@
 datatype HaskellType = 
     Integer of int 
-  | Real of real
+  | RealNumber of real
   | Character of char
-  | Boolean of bool 
+  | Boolean of bool
+  | Function of string * Haskell 
 
-datatype Haskell = 
+and Haskell = 
     HaskellType of HaskellType
   | Var of string 
   | Eq of Haskell * Haskell
@@ -15,9 +16,10 @@ datatype Haskell =
   | Call of string * Haskell
   | Plus of Haskell * Haskell
   | Minus of Haskell * Haskell
-  | Times of Haskell * Haskell;
+  | Times of Haskell * Haskell
+  | Lamda of Haskell * Haskell;
 
-datatype Entry = VariableBinding of string * (Haskell * (Entry list))| FunctionClosure of  string * (string * Haskell * Haskell * (Entry list));
+datatype Entry = VariableBinding of string * (Haskell * (Entry list))| FunctionClosure of  string * (string * Haskell  * (Entry list));
 
 (* val env : Entry list [] *)
 
@@ -36,18 +38,98 @@ fun search (string, VariableBinding(variable, assignment):: enviroment) =
 fun eval (HaskellType haskellType, _) = SOME haskellType
   | eval (Var variable, environment) =
     (case search(variable, environment) of
-      SOME (VariableBinding(_, (expression, associted_environment))) =>
-        eval (expression, associated_enviroment)
+      SOME (VariableBinding(_, (expression, associated_environment))) =>
+        eval (expression, associated_environment)
     | _ => NONE)
+  | eval (Eq(a, b), environment) =
+    (case (eval(a, environment), eval(b, environment)) of
+        (SOME (Integer a), SOME (Integer b)) =>
+          SOME (Boolean (Int.compare(a, b) = EQUAL))
+      | (SOME (RealNumber a), SOME (RealNumber b)) =>
+          SOME (Boolean(Real.compare(a, b) = EQUAL))
+      | (SOME (Character a), SOME (Character b)) =>
+          SOME(Boolean (Char.compare(a, b) = EQUAL))
+      | (SOME (Boolean a), SOME (Boolean b)) =>
+          SOME(Boolean (a = b))
+      | _ => NONE) 
   | eval (Implies(a, b), environment) =
-    (case (eval(a, environment), eval(n, environment)) of
+    (case (eval(a, environment), eval(b, environment)) of
       (SOME (Boolean a), SOME (Boolean b)) => SOME (Boolean (not a orelse b))
     | _ => NONE)
-  | eval (If(condition, condizionTrue, conditionFalse), environment) =
+  | eval (If(condition, conditionTrue, conditionFalse), environment) =
     (case eval(condition, environment) of
-      SOME (Boolean true) => eval (condizionTrue, environment)
-    | SOME (Boolean false) => eval (condizionFalse, environment)
+      SOME (Boolean true) => eval (conditionTrue, environment)
+    | SOME (Boolean false) => eval (conditionFalse, environment)
     |_ => NONE)
+  | eval (Let(variable, expression, scope), environment) =
+      eval(scope, VariableBinding(variable, (expression, environment)) :: environment)
+  | eval (Fn (function, argument, body, scope), environment) =
+      eval(scope, FunctionClosure (function, (argument, body, environment)):: environment)
+  | eval (Call (function, expression), environment) =
+    (case search(function, environment) of 
+        SOME (FunctionClosure(_, (argument, body, associate_environment))) =>
+          eval (body, FunctionClosure(function, (argument, body, associate_environment)) 
+            :: VariableBinding(argument, (expression, environment))
+            :: associate_environment
+          )
+      | _ => NONE )
+  | eval (Plus(x, y), environment) =
+    (case (eval(x, environment), eval(y, environment)) of
+        (SOME (Integer x), SOME (Integer y)) => SOME (Integer(x + y))
+      | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber(x + y))
+      | _ => NONE)
+  | eval (Minus(x, y), environment) =
+    (case (eval(x, environment), eval(y, environment)) of
+        (SOME (Integer x), SOME (Integer y)) => SOME (Integer(x - y))
+      | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber(x - y))
+      | _ => NONE)
+  | eval (Times(x, y), environment) =
+    (case (eval(x, environment), eval(y, environment)) of
+        (SOME (Integer x), SOME (Integer y)) => SOME (Integer(x - y))
+      | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber(x - y))
+      | _ => NONE)
+
+
+val x = Var("x")
+(* val print = eval(x, [VariableBinding ("x", (HaskellType(Integer 5), []))]) *)
+
+val y = Let("y", Plus(x,x), Var("y"))
+(* val print = eval(y, []) *)
+(* val print = eval(y, [VariableBinding ("x", (HaskellType(Integer 5), []))]) *)
+
+
+val z = Fn("sum", "x", Plus(x, x), Call("sum", Var("x")))
+(* val print = eval(z, [VariableBinding ("x", (HaskellType(Integer 5), []))]) *)
+
+
+val t = Fn("omega", "x", Call("omega", HaskellType(Integer 5)), Call("omega", HaskellType(Integer 5)))
+(* val print = eval(t, [VariableBinding ("x", (HaskellType(Integer 5), []))]) *)
+
+val v = Var("v")
+val print = eval(v, [FunctionClosure("v",("sum", Call("omega", Var("x")), []))])
+
+(* val sum = 
+  Fn (
+    "sum", "x"
+  ) *)
+
+(* val a = Let("x", HaskellType(Integer 5), Times(Var "x", Times(HaskellType(Integer 5), HaskellType(Integer 4))))
+val res = eval (a, []) *)
+
+(* val factorial =
+  Fn
+    ( "factorial"
+    , "n"
+    , If
+        ( Eq (Var "n", HaskellType (Integer 0))
+        , HaskellType (Integer 1)
+        , Times (Var "n", Call ("factorial", Minus
+            (Var "n", HaskellType (Integer 1))))
+        )
+    , Call ("factorial", HaskellType (Integer 3))
+    );
+
+val resf = eval (factorial, []) *)
 
 (* datatype 'a env = Bind of string * 'a * 'a env | EmptyEnv;
 
