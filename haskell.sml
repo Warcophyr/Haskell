@@ -9,12 +9,12 @@ and Haskell =
     HaskellType of HaskellType
   | ConstInt of int
   | ConstReal of real
-  | Var of string 
+  | Var of string
   | Eq of Haskell * Haskell
   | Implies of Haskell * Haskell
   | If of Haskell * Haskell * Haskell
-  (* | Let of string * Haskell * Haskell
-  | Fn of string * string * Haskell * Haskell *)
+  | Let of string * Haskell * Haskell
+  (* | Fn of string * string * Haskell * Haskell *)
   | Call of Haskell * Haskell
   | Lambda of string * Haskell
   | Plus of Haskell * Haskell
@@ -120,8 +120,22 @@ fun eval (Delay f,environment) =
           | _ => NONE
     end
   | eval(Lambda(arg, body), env) = SOME (Function(arg, body, env))
+  | eval(Let(var, exp, scope), env) =
+    let
+      val exp' = eval(exp, env)
+    in
+      case SOME exp of
+       SOME (Lambda(arg, body)) =>
+                (* Here we close over the environment by adding the function definition to it *)
+                eval(scope, VariableBinding(var, (Lambda(arg, body), env)) :: env)
+            | _ => NONE
+    end
 
 
-val expr = Lambda("y", Plus(Var "x", ConstInt 2))
-val print = eval(Call(expr, Var"x"), [VariableBinding ("x", (HaskellType(Integer 5), []))])
+(* val expr = Lambda("y", Plus(Var "x", ConstInt 2))
+val print = eval(Call(expr, Var"x"), [VariableBinding ("x", (HaskellType(Integer 5), []))]) *)
 (* val print = eval(expr, [VariableBinding ("x", (HaskellType(Integer 5), []))]) *)
+
+val expl = Let("y", Call(Var "x", Lambda("x", Plus(Var"z", ConstInt 1))), Call(Var "x", ConstInt 1))
+val print = eval(expl, [VariableBinding ("z", (HaskellType(Integer 5), []))])
+
