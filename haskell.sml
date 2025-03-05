@@ -236,10 +236,18 @@ val print = eval(expl, [VariableBinding ("x", (HaskellType(Integer 5), []))]) *)
 val print = eval(expr, []) *)
 
 
-val factorial_expr = Let(
+(* val factorial_expr = Let(
   "factorial", 
   Lambda("n", If(Eq(Var "n", ConstInt 0), ConstInt 1, Times(Var "n" , Call(Var "factorial" , Minus(Var "n" , ConstInt 1 ))))), 
   Call(Var "factorial", ConstInt 5)   (* Apply factorial to 5 *)
 )
 
-val print = eval(factorial_expr, [])
+val print = eval(factorial_expr, []) *)
+
+val expr = Let("y", 
+               Call(Lambda("x", Call(Var("x"), Var("x"))), 
+                    Lambda("x", Call(Var("x"), Var("x")))), 
+               ConstInt 5)
+
+(* Now evaluate the expression *)
+val result = eval(expr, [VariableBinding ("z", (HaskellType(Integer 5), []))])
