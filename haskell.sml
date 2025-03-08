@@ -1,3 +1,20 @@
+structure Parser = struct
+  datatype Lexemes = Let | Eq | In | Arrow | Lambda| Id of string | Num of int
+
+  val program = "let x = 5 in let y = \\z -> z in (y 5)"
+
+  fun readWord ([], w) = (w, []) 
+  | readWord ((x::xs), w) = if x = " " then (w, xs) else readWord(xs, x::w) 
+
+  fun tokenize(#"l" :: #"e":: #"t" :: cs) = Let :: tokenize cs
+    | tokenize(#"=" :: cs) = Eq :: tokenize cs
+    | tokenize(#"-" :: #">" :: cs) = Arnizerow :: tokenize cs
+    | tokenize(#"\\" :: cs) = Lambda :: tokenize cs
+end
+
+(* structure Haskell = struct
+  ...
+end *)
 datatype HaskellType = 
     Integer of int 
   | RealNumber of real
@@ -13,14 +30,14 @@ and Haskell =
   | Eq of Haskell * Haskell
   | Implies of Haskell * Haskell
   | If of Haskell * Haskell * Haskell
-  | Let of string * Haskell * Haskell
-  (* | Fn of string * string * Haskell * Haskell *)
-  | Call of Haskell * Haskell
-  | Lambda of string * Haskell
   | Plus of Haskell * Haskell
   | Minus of Haskell * Haskell
   | Times of Haskell * Haskell
-and Entry = VariableBinding of string * (Haskell * (Entry list))| FunctionClosure of  string * (string * Haskell  * (Entry list));
+  | Let of string * Haskell * Haskell
+  | Lambda of string * Haskell
+  | Fun of string * string list * Haskell * Haskell
+  | Call of Haskell * Haskell
+and Entry = VariableBinding of string * (Haskell * (Entry list));
 
 (* val env : Entry list [] *)
 fun toString (SOME (Integer n)) = "Integer " ^ Int.toString n
@@ -43,7 +60,6 @@ fun unwrapOption (SOME x) = x
 (* Helper function to check if a variable is already in the environment *)
 fun is_in_env(var, []) = false
   | is_in_env(var, VariableBinding(v, _) :: rest) = (v = var) orelse is_in_env(var, rest)
-  | is_in_env(var, FunctionClosure(f, _) :: rest) = (f = var) orelse is_in_env(var, rest);
 
 (* Function to extend captured env with current env without overriding *)
 fun extend_env(captured, current) =
@@ -55,42 +71,28 @@ fun extend_env(captured, current) =
                  if is_in_env(var, captured) then
                      extend_env(captured, rest)  (* Skip if already present *)
                  else
-                     extend_env(entry :: captured, rest)  (* Add if not present *)
-             | FunctionClosure(func, _) =>
-                 if is_in_env(func, captured) then
-                     extend_env(captured, rest)  (* Skip if already present *)
-                 else
                      extend_env(entry :: captured, rest))  (* Add if not present *)
 
-fun search (string, env) =
+fun search (var_string, env) =
     let
         fun showEnv [] = ""
           | showEnv (VariableBinding(var, _) :: xs) = "Var: " ^ var ^ " " ^ showEnv xs
-          | showEnv (FunctionClosure(func, _) :: xs) = "Func: " ^ func ^ " " ^ showEnv xs
     in
-        print ("Searching for: " ^ string ^ " in env: " ^ showEnv env ^ "\n");
+        print ("Searching for: " ^ var_string ^ " in env: " ^ showEnv env ^ "\n");
         case env of
           VariableBinding(variable, assignment)::enviroment =>
-            if String.compare(string, variable) = EQUAL then 
+            if String.compare(var_string, variable) = EQUAL then 
               SOME (VariableBinding(variable, assignment))
             else 
-              search(string, enviroment)
-        | FunctionClosure(function, closere)::enviroment =>
-            if String.compare(string, function) = EQUAL then 
-              SOME (FunctionClosure(function, closere))
-            else 
-              search(string, enviroment)
+              search(var_string, enviroment)
         | [] => NONE
     end
 
 
-(* A Thunk is a function that returns an evaluation *)
-type 'a thunk = unit -> 'a
+fun fromFunToLambda([], exp) = exp
+  | fromFunToLambda ((x::xs), exp) = Lambda(x, fromFunToLambda(xs, exp))
 
-(* Helper function to create a thunk for lazy evaluation *)
-fun delay_eval (expr,  environment )= fn () => eval(expr, environment)
-
-and  eval (HaskellType haskellType, _) = SOME haskellType
+fun  eval (HaskellType haskellType, _) = SOME haskellType
   | eval (Var variable, environment) =
     (case search(variable, environment) of
       SOME (VariableBinding(_, (expression, associated_environment))) =>
@@ -115,13 +117,11 @@ and  eval (HaskellType haskellType, _) = SOME haskellType
     | _ => NONE)
   | eval (If(condition, conditionTrue, conditionFalse), environment) =
   let
-    val condition_thunk = delay_eval(condition, environment)
-    val true_thunk = delay_eval(conditionTrue, environment)
-    val false_thunk = delay_eval(conditionFalse, environment)
+    val condition_eval = eval(condition, environment)
   in
-    case condition_thunk () of
-        SOME (Boolean true) => true_thunk ()  (* Only evaluate the true branch *)
-      | SOME (Boolean false) => false_thunk ()  (* Only evaluate the false branch *)
+    case condition_eval of
+        SOME (Boolean true) => eval(conditionTrue, environment)  (* Only evaluate the true branch *)
+      | SOME (Boolean false) => eval(conditionFalse, environment)  (* Only evaluate the false branch *)
       | _ => NONE
   end
   (* | eval (Let(variable, expression, scope), environment) =
@@ -142,89 +142,41 @@ and  eval (HaskellType haskellType, _) = SOME haskellType
       | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber(x * y))
       | _ => NONE)
 
+  | eval (Let(var, exp, scope), env) =
+    let
+      (* val new_env =extend_env(env, [VariableBinding(var, (exp, env))]) *)
+      val new_env = env @ [VariableBinding(var, (exp, env))]
+    in
+      eval(scope, new_env)
+    end
+  | eval(Lambda(arg, body), env) = SOME (Function(arg, body, env))
+  | eval(Fun(name, vars, exp, exp'), env) =
+    eval(Let(name, fromFunToLambda(vars, exp), exp'), env)
+    (* let
+        (* fun showEnv [] = ""
+          | showEnv (VariableBinding(var, _) :: xs) = "Var: " ^ var ^ " " ^ showEnv xs *)
+      val new_env = env @ [VariableBinding(var, (f, env))]
+    in
+    
+      (* print ("Searching for: " ^ var ^ " in env: " ^ showEnv new_env ^ "\n"); *)
+      eval(f, new_env)
+    end *)
   | eval (Call(f, arg), env) =
   let
-    (* Create a thunk for the argument so it's evaluated lazily *)
-    val arg_thunk = delay_eval(arg, env)
     (* Evaluate the function (f) eagerly, since the function itself doesn't need lazy evaluation) *)
     val f' = eval(f, env)
   in
     case f' of
         SOME (Function(x, body, close_env)) =>
-            (* Now, instead of evaluating the argument immediately, pass the thunk *)
             let
-              val extended_env = extend_env(close_env, env)  (* Extend the environment with the closure's environment *)
-              val arg_value = arg_thunk ()  (* Evaluate the argument lazily when needed *)
+              (* val extended_env = extend_env(close_env, env) *)
+              val extended_env = close_env @ env
+              val arg_value = eval(arg, env)  (* Evaluate the argument lazily when needed *)
             in
               eval(body, VariableBinding(x, (HaskellType (unwrapOption arg_value), extended_env)) :: extended_env)
             end
       | _ => NONE
   end
-  (* | eval (Call(f, arg), env) =
-    let
-      val f' = eval(f, env)
-      val arg' = eval(arg, env)
-    in
-      case (f', arg') of
-            (SOME (Function(x, body, close_environment)), SOME value) =>
-                (* Safely extend the captured environment with the current one *)
-                let
-                    val extended_env = extend_env(close_environment, env)
-                in
-                    eval(body, VariableBinding(x, (HaskellType value, extended_env)) :: extended_env)
-                end
-          | _ => NONE
-    end *)
-  | eval(Lambda(arg, body), env) = SOME (Function(arg, body, env))
-  | eval (Let(var, exp, scope), env) =
-  let
-    (* Create thunks for exp and scope to delay their evaluation *)
-    val exp_thunk = delay_eval(exp, env)
-    (* val scope_thunk = delay_eval(scope, env) *)
-  in
-    case exp of
-         Lambda(arg, body) =>
-            let
-              (* Create a placeholder for the recursive environment *)
-              val placeholder = ref [] : Entry list ref
-              val recEnv = VariableBinding(var, (HaskellType (Function(arg, body, !placeholder)), !placeholder)) :: env
-              val () = placeholder := recEnv  (* Replace placeholder with actual recursive environment *)
-            in
-              eval(scope, recEnv)
-            end
-       | _ =>
-            (case exp_thunk () of  (* Evaluate exp only when needed *)
-                 SOME v => eval(scope, VariableBinding(var, (HaskellType v, env)) :: env)
-               | NONE => NONE)
-  end
-
-
-   (* | eval (Let(var, exp, scope), env) =
-    (case eval(exp, env) of
-         SOME v =>
-           (* For any expression (whether it’s a lambda or not), we bind
-              the variable to the evaluated result.
-              The binding stores a Haskell expression that when evaluated
-              returns the value, ensuring the let is non-strict if needed. *)
-           eval(scope, VariableBinding(var, (HaskellType v, env)) :: env)
-       | NONE => NONE) *)
-
-
-(* val expr = Lambda("y", Plus(Var "y", ConstInt 2))
-(* val print = eval(expr, []) *)
-val print = eval(Call(expr, ConstInt 1), [VariableBinding ("x", (HaskellType(Integer 5), []))]) *)
-(* val print = eval(expr, [VariableBinding ("x", (HaskellType(Integer 5), []))]) *)
-
-(* val expif = Let("sum", If(Eq(Var"x", ConstInt 10), Var "x", Plus(Var "x", ConstInt 1)), Call(Var "sum", Var "x"))
-val print = eval(expif, [VariableBinding ("x", (HaskellType(Integer 5), []))]) *)
-
-(* val expl = Let("loop",
-    Lambda("x",
-        If(Eq(Var "x", ConstInt 10),
-           Var "x",
-           Call(Var "loop", Plus(Var "x", ConstInt 1)))),
-    Call(Var "loop", Var "x"))
-val print = eval(expl, [VariableBinding ("x", (HaskellType(Integer 5), []))]) *)
 
 
 (* val expr = Let(
@@ -233,21 +185,50 @@ val print = eval(expl, [VariableBinding ("x", (HaskellType(Integer 5), []))]) *)
   Call(Call(Call(Var("t"), ConstInt(5)), ConstInt(4)), ConstInt(1)) (* ((t 5) 4) 1 *)
 )
 
-val print = eval(expr, []) *)
+(* val print = eval(expr, []) *) *)
 
 
 (* val factorial_expr = Let(
   "factorial", 
   Lambda("n", If(Eq(Var "n", ConstInt 0), ConstInt 1, Times(Var "n" , Call(Var "factorial" , Minus(Var "n" , ConstInt 1 ))))), 
-  Call(Var "factorial", ConstInt 5)   (* Apply factorial to 5 *)
+  Call(Var "factorial", ConstInt 7)   (* Apply factorial to 5 *)
 )
 
 val print = eval(factorial_expr, []) *)
 
-val expr = Let("y", 
+(* val expr = Let("y", 
                Call(Lambda("x", Call(Var("x"), Var("x"))), 
                     Lambda("x", Call(Var("x"), Var("x")))), 
                ConstInt 5)
 
 (* Now evaluate the expression *)
-val result = eval(expr, [VariableBinding ("z", (HaskellType(Integer 5), []))])
+val result = eval(expr, [VariableBinding ("z", (HaskellType(Integer 5), []))]) *)
+
+(* val expr = Let("y", 
+               Call(Lambda("x", Call(Var("x"), Var("x"))), 
+                    Lambda("x", Call(Var("x"), Var("x")))), 
+               Var "y")
+
+(* Now evaluate the expression *)
+val result = eval(expr, [VariableBinding ("z", (HaskellType(Integer 5), []))]) *)
+
+(* val scoop =Let("y", ConstInt 5, Let("y", Plus(Var "x", Var "x"), Let("x", ConstInt 10, Var "y")))
+val print = eval(scoop, []) *)
+
+(* val scoop =Let("z", ConstInt 5, Let("y", Lambda("a", Plus( Var"a", Var "z")), Let("z", ConstInt 10, Call(Var "y", ConstInt 10))))
+val print = eval(scoop, []) *)
+
+(* val scoop =Let("x", Lambda("a", Lambda("b", Plus(Var "a", Var "b"))), Call(Call(Var"x", ConstInt 5), ConstInt 6))
+val print = eval(scoop, []) *)
+
+(* val scoop =Let("z", ConstInt 5, Let("y", Lambda("a", Lambda("b", Plus( Var"a", Plus(Var "b", Var "z")))), Let("z", ConstInt 10, Call(Call(Var "y", ConstInt 10), ConstInt 1))))
+val print = eval(scoop, []) *)
+
+(* val test_fn = Fun("plus", ["x", "y"], Plus(Var "x", Var "y"), Call(Call( Var "plus", ConstInt 5), ConstInt 4))
+val print = eval(test_fn, []) *)
+
+
+val factorial = Fun("factorial", ["n"], If(Eq(Var "n", ConstInt 1), ConstInt 1, Times(Var "n", Call(Var "factorial", Minus(Var "n", ConstInt 1)))), Call(Var "factorial", ConstInt 5))
+val print = eval(factorial, [])
+
+
