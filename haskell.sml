@@ -1,15 +1,72 @@
 structure Parser = struct
-  datatype Lexemes = Let | Eq | In | Arrow | Lambda| Id of string | Num of int
+  (* Define a datatype to represent different tokens *)
+  datatype Lexemes = 
+      Let 
+    | Assign             (* New token for '=' in function definitions *)
+    | Eq                 (* Token for '=' in expressions *)
+    | In                 (* Token for 'in' *)
+    | Arrow              (* Token for '->' *)
+    | Lambda             (* Token for '\' *)
+    | Plus               (* Token for '+' *)
+    | Minus              (* Token for '-' *)
+    | Times              (* Token for '*' *)
+    | Div                (* Token for '/' *)
+    | Id of string       (* Token for identifiers *)
+    | Integer of int         (* Token for integers *)
+    | RealNumber of real       (* Token for real numbers *)
 
-  val program = "let x = 5 in let y = \\z -> z in (y 5)"
+  (* Example program to tokenize *)
+  val program = "let x = 5.3 in add x y = x + y in add 2 3"
 
-  fun readWord ([], w) = (w, []) 
-  | readWord ((x::xs), w) = if x = " " then (w, xs) else readWord(xs, x::w) 
+  (* Helper function to read a word or identifier *)
+  fun readWord ([], w) = (implode (rev w), [])
+    | readWord (#" " :: xs, w) = (implode (rev w), xs)
+    | readWord (c :: xs, w) = readWord (xs, c :: w)
 
-  fun tokenize(#"l" :: #"e":: #"t" :: cs) = Let :: tokenize cs
-    | tokenize(#"=" :: cs) = Eq :: tokenize cs
-    | tokenize(#"-" :: #">" :: cs) = Arnizerow :: tokenize cs
-    | tokenize(#"\\" :: cs) = Lambda :: tokenize cs
+  (* Helper function to read numbers (both integers and reals) *)
+  fun readNumber ([], n, hasDot) = 
+        let val numStr = implode (rev n)
+        in if hasDot 
+           then (RealNumber (valOf (Real.fromString numStr)), []) 
+           else (Integer (valOf (Int.fromString numStr)), [])
+        end
+    | readNumber (#" " :: xs, n, hasDot) = 
+        let val numStr = implode (rev n)
+        in if hasDot 
+           then (RealNumber (valOf (Real.fromString numStr)), xs) 
+           else (Integer (valOf (Int.fromString numStr)), xs)
+        end
+    | readNumber (#"." :: xs, n, false) = readNumber (xs, #"." :: n, true)
+    | readNumber (#"." :: _, _, true) = raise Fail "Invalid number format: multiple dots"
+    | readNumber (c :: xs, n, hasDot) = readNumber (xs, c :: n, hasDot)
+
+  (* Main function to tokenize the input *)
+  fun tokenize [] = []
+    | tokenize (#" " :: cs) = tokenize cs  (* Skip spaces *)
+    | tokenize (#"l" :: #"e" :: #"t" :: cs) = Let :: tokenize cs
+    | tokenize (#"i" :: #"n" :: cs) = In :: tokenize cs
+    | tokenize (#"+" :: cs) = Plus :: tokenize cs   (* Token for '+' *)
+    | tokenize (#"-" :: #">" :: cs) = Arrow :: tokenize cs
+    | tokenize (#"-" :: cs) = Minus :: tokenize cs  (* Token for '-' *)
+    | tokenize (#"*" :: cs) = Times :: tokenize cs  (* Token for '*' *)
+    | tokenize (#"/" :: cs) = Div :: tokenize cs    (* Token for '/' *)
+    | tokenize (#"\\" :: cs) = Lambda :: tokenize cs
+    | tokenize (#"=" :: cs) = 
+        (* Check if '=' is part of a function definition or an expression *)
+        (case tokenize cs of 
+            (Id _ :: _) => Assign :: tokenize cs  (* If followed by an Id, it's an assignment *)
+          | _ => Eq :: tokenize cs)               (* Else, it's an expression '=' *)
+    | tokenize (c :: cs) = 
+        if Char.isAlpha c then
+            let val (word, rest) = readWord (c :: cs, [])
+            in Id word :: tokenize rest end
+        else if Char.isDigit c orelse c = #"." then
+            let val (num, rest) = readNumber (c :: cs, [], false)
+            in num :: tokenize rest end
+        else tokenize cs  (* Ignore unrecognized characters *)
+
+  (* Function to run the tokenizer on the program *)
+  val tokens = tokenize (String.explode program)
 end
 
 (* structure Haskell = struct
@@ -127,21 +184,26 @@ fun  eval (HaskellType haskellType, _) = SOME haskellType
   (* | eval (Let(variable, expression, scope), environment) =
     eval(scope, VariableBinding(variable, (expression, environment)) :: environment) *)
   | eval (Plus(x, y), environment) =
-    (case (eval(x, environment), eval(y, environment)) of
-        (SOME (Integer x), SOME (Integer y)) => SOME (Integer(x + y))
-      | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber(x + y))
-      | _ => NONE)
+  (case (eval(x, environment), eval(y, environment)) of
+      (SOME (Integer x), SOME (Integer y)) => SOME (Integer (x + y))
+    | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber (x + y))
+    | (SOME (Integer x), SOME (RealNumber y)) => SOME (RealNumber (Real.fromInt x + y))  (* Convert Integer to Real and add *)
+    | (SOME (RealNumber x), SOME (Integer y)) => SOME (RealNumber (x + Real.fromInt y))  (* Convert Integer to Real and add *)
+    | _ => NONE)
   | eval (Minus(x, y), environment) =
     (case (eval(x, environment), eval(y, environment)) of
-        (SOME (Integer x), SOME (Integer y)) => SOME (Integer(x - y))
-      | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber(x - y))
+      (SOME (Integer x), SOME (Integer y)) => SOME (Integer (x - y))
+    | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber (x - y))
+    | (SOME (Integer x), SOME (RealNumber y)) => SOME (RealNumber (Real.fromInt x - y))  (* Convert Integer to Real and add *)
+    | (SOME (RealNumber x), SOME (Integer y)) => SOME (RealNumber (x - Real.fromInt y))
       | _ => NONE)
   | eval (Times(x, y), environment) =
     (case (eval(x, environment), eval(y, environment)) of
-        (SOME (Integer x), SOME (Integer y)) => SOME (Integer(x * y))
-      | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber(x * y))
+        (SOME (Integer x), SOME (Integer y)) => SOME (Integer (x * y))
+      | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber (x * y))
+      | (SOME (Integer x), SOME (RealNumber y)) => SOME (RealNumber (Real.fromInt x * y))  (* Convert Integer to Real and add *)
+      | (SOME (RealNumber x), SOME (Integer y)) => SOME (RealNumber (x * Real.fromInt y))
       | _ => NONE)
-
   | eval (Let(var, exp, scope), env) =
     let
       (* val new_env =extend_env(env, [VariableBinding(var, (exp, env))]) *)
@@ -218,6 +280,7 @@ val print = eval(scoop, []) *)
 (* val scoop =Let("z", ConstInt 5, Let("y", Lambda("a", Plus( Var"a", Var "z")), Let("z", ConstInt 10, Call(Var "y", ConstInt 10))))
 val print = eval(scoop, []) *)
 
+(*let x = \a->\b-> a + b in ((x 5) 6)*)
 (* val scoop =Let("x", Lambda("a", Lambda("b", Plus(Var "a", Var "b"))), Call(Call(Var"x", ConstInt 5), ConstInt 6))
 val print = eval(scoop, []) *)
 
@@ -232,3 +295,13 @@ val factorial = Fun("factorial", ["n"], If(Eq(Var "n", ConstInt 1), ConstInt 1, 
 val print = eval(factorial, [])
 
 
+(* val program_string = "let x = 5.3 in let y = \\z -> z in (y 5)"
+val program_token = Let("x", ConstReal 5.3, Let("y", Lambda("z", Var "z"), Call(Var "y", ConstInt 5)))
+val print = eval(program_token, []) *)
+
+(* val test = Let("x", Lambda("y", Plus(Var "y", Var "y")), Call(Var "x", ConstInt 4))
+val print = eval(test, []) *)
+
+
+(* val test = Plus(ConstInt 1, ConstReal 2.3)
+val print = eval(test,  []) *)
