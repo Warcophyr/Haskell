@@ -86,14 +86,14 @@ structure Lexemes = struct
     | tokenize (#")" :: cs) = RParen :: tokenize cs
     | tokenize (#"&" :: #"&" :: cs) = And :: tokenize cs 
     | tokenize (#"|" :: #"|" :: cs) = Or :: tokenize cs
-    | tokenize (#"=" :: cs) = 
-    let
+    | tokenize (#"=" :: cs) =  Eq :: tokenize cs 
+    (* let
         val tokens = tokenize cs
     in
         case tokens of 
             (* (Id _ :: Id _ :: _) => Assign :: tokens *)
            _ => Eq :: tokens
-    end            (* Else, it's an expression '=' *)
+    end            Else, it's an expression '=' *)
     | tokenize (c :: cs) = 
         if Char.isAlpha c then
             let val (word, rest) = readWord (c :: cs, [])
@@ -150,7 +150,6 @@ structure Parser = struct
        | (Lexemes.LParen, Lexemes.LParen) => ts
        | (Lexemes.Let, Lexemes.Let)       => ts
        | (Lexemes.In, Lexemes.In)         => ts
-       (* | (Lexemes.Assign, Lexemes.Assign) => ts *)
        | (Lexemes.Eq, Lexemes.Eq)         => ts
        | (Lexemes.Arrow, Lexemes.Arrow)   => ts
        | (Lexemes.And, Lexemes.And)         => ts
@@ -168,12 +167,6 @@ structure Parser = struct
   | expect _ [] = raise Fail "Unexpected end of input"
 
 
-  (* fun expect (tok, tokStream) = 
-    case tokStream of
-         (t :: ts) => if t = tok then SOME ts else NONE
-       | [] => NONE *)
-
-    
     fun parser ts =
     let
         (* Primary expressions: variables, numbers, and parenthesized expressions *)
@@ -359,25 +352,13 @@ structure Parser = struct
                 (If(condition, trueBranch, falseBranch), ts5)
             end
             | parserIf ts = parserPrimary ts
-
-        (* and parserIf (Lexemes.If :: ts) =
-            let
-                val (condition, ts1) = parserComp ts
-                val ts2 = expect Lexemes.Then ts1
-                val (trueBranch, ts3) = parser ts2
-                val ts4 = expect Lexemes.Else ts3
-                val (falseBranch, ts5) = parser ts4
-            in
-                (If(condition, trueBranch, falseBranch), ts5)
-            end
-            | parserIf ts = parserPrimary ts *)
-        (* Let expressions *)
         and parserLet (Lexemes.Let :: Lexemes.Id name :: Lexemes.Eq :: ts) =
             let
                 val (exp, ts1) =
                   case ts of 
                       Lexemes.Lambda :: _ => parserLambda ts
-                    | Lexemes.If :: _ => parserIf ts 
+                    | Lexemes.If :: _ => parserIf ts
+                    | Lexemes.Let :: _ => parserLet ts 
                     | _ => parserArithmetic ts
 
                 (* Parse the bound expression *)
@@ -418,31 +399,7 @@ structure Parser = struct
                             in
                               (ce, ts'')
                             end
-                        (* | _ => (Call (Var f, ConstInt 6), tokensAfterBody) *)
                         | _ => (Var f, tokensAfterBody)
-                        (* | _ =>
-                          let
-                            (* Helper function to extract integer arguments from the token list *)
-                            fun extractArgs (ts, acc) =
-                              case ts of
-                                  Lexemes.Integer n :: rest => extractArgs (rest, acc @ [n])  (* Collect integer args *)
-                                | _ => (acc, ts)  (* Stop collecting when we hit a non-integer token *)
-
-                            (* Helper function to wrap function calls with the extracted arguments *)
-                            fun wrapCalls (expr, []) = expr
-                              | wrapCalls (expr, arg :: rest) = wrapCalls (Call(expr, ConstInt arg), rest)
-
-                            (* Extract arguments from tokensAfterBody *)
-                            val (args, remainingTokens) = extractArgs (tokensAfterBody, [])
-
-                            
-
-                            (* Apply nested calls to the function `Var f` with extracted arguments *)
-                            val nestedCall = wrapCalls (Var f, args)
-
-                          in
-                            (nestedCall, remainingTokens)
-                          end *)
                 in
                   (Fun(f, params, bodyExpr, contExpr), remainingTokens)
                 end
@@ -589,11 +546,6 @@ fun  eval (HaskellType haskellType, _) = SOME haskellType
       | (SOME (Character a), SOME (Character b)) =>
           SOME(Boolean (Char.<=(a, b)))
       | _ => NONE)
-  (* | eval (And(a, b), env) =
-    (case (eval(a, env), eval(b, env)) of
-       (SOME (Boolean a), SOME (Boolean b)) =>
-          SOME(Boolean (a andalso b))
-      | _ => NONE)  *)
   | eval (And(a, b), env) =
       let
         val a' = eval(a, env)
@@ -628,17 +580,6 @@ fun  eval (HaskellType haskellType, _) = SOME haskellType
             end
           | _ => NONE
       end
-  (* | eval (Gt(a, b), env) =
-    (case (eval(a, env), eval(b, env)) of
-        (SOME (Integer a), SOME (Integer b)) =>
-          SOME (Boolean (Int.compare(a, b) = EQUAL))
-      | (SOME (RealNumber a), SOME (RealNumber b)) =>
-          SOME (Boolean(Real.compare(a, b) = EQUAL))
-      | (SOME (Character a), SOME (Character b)) =>
-          SOME(Boolean (Char.compare(a, b) = EQUAL))
-      | (SOME (Boolean a), SOME (Boolean b)) =>
-          SOME(Boolean (a = b))
-      | _ => NONE)  *)
   | eval (Implies(a, b), env) =
     (case (eval(a, env), eval(b, env)) of
       (SOME (Boolean a), SOME (Boolean b)) => SOME (Boolean (not a orelse b))
@@ -652,8 +593,6 @@ fun  eval (HaskellType haskellType, _) = SOME haskellType
           | SOME (Boolean false) => eval(conditionFalse, env)  (* Only evaluate the false branch *)
           | _ => NONE
       end
-  (* | eval (Let(variable, expression, scope), environment) =
-    eval(scope, VariableBinding(variable, (expression, environment)) :: environment) *)
   | eval (Add(x, y), env) =
   (case (eval(x, env), eval(y, env)) of
       (SOME (Integer x), SOME (Integer y)) => SOME (Integer (x + y))
@@ -718,7 +657,7 @@ end
 (* val program = "let x = \\y-> 5 in 5" *)
 (* val program = "id x = x" *)
 
-fun main () =
+(* fun main () =
     let
       val userInput = TextIO.inputLine TextIO.stdIn
     in
@@ -734,7 +673,7 @@ fun main () =
             main () 
           end
     end;
-main()
+main() *)
 
 (* val program = "let x = \\a->\\b->\\c-> a + b + c in (((x 5) 6) 7) + 1" *)
 (* val program = "add a b = a + b" *)
@@ -758,9 +697,10 @@ main()
 (* val program = "let fact n = if n == 1 then 1 else n * (fact (n-1)) in fact 2" *)
 (* val program = "if 0 < 2 && 1 < 2  && 0 > 1 then 1 else 0" *)
 
-(* val tokens = Lexemes.tokenize (String.explode program)
+val program = "let x = let y = 2 in y + 1 in x + y"
+val tokens = Lexemes.tokenize (String.explode program)
 val (ast, _) = Parser.parser tokens
-val print = Parser.eval(ast, [])  *)
+val print = Parser.eval(ast, []) 
 
 
 
