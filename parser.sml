@@ -1,14 +1,15 @@
 structure Lexemes = struct
     datatype Lexemes = 
         Let 
-        (* | Assign              *)
         | Eq                 (* Token for '=' in expressions *)
+        | And 
+        | Or
         | In                 (* Token for 'in' *)
         | Arrow              (* Token for '->' *)
         | Lambda             (* Token for '\' *)
-        | Plus               (* Token for '+' *)
-        | Minus              (* Token for '-' *)
-        | Times              (* Token for '*' *)
+        | Add               (* Token for '+' *)
+        | Sub              (* Token for '-' *)
+        | Mul              (* Token for '*' *)
         | Div                (* Token for '/' *)
         | Id of string       (* Token for identifiers *)
         | Integer of int         (* Token for integers *)
@@ -19,6 +20,11 @@ structure Lexemes = struct
         | Then 
         | Else 
         | Comp
+        | Not
+        | Gt 
+        | Ge 
+        | Lt 
+        | Le 
 
     (* val program = "let x = 5.3 in add x y = x + y in add 2 3" *)
 
@@ -62,17 +68,24 @@ structure Lexemes = struct
     | tokenize (#"i" :: #"f" :: cs) = If :: tokenize cs 
     | tokenize (#"t" :: #"h" :: #"e" :: #"n" :: cs) = Then :: tokenize cs
     | tokenize (#"e" :: #"l" :: #"s" :: #"e" :: cs) = Else :: tokenize cs 
+    | tokenize (#"n" :: #"o" :: #"t" :: cs) = Not :: tokenize cs
     | tokenize (#"=" :: #"=" :: cs) = Comp :: tokenize cs
+    | tokenize (#">" :: #"=" :: cs) = Ge :: tokenize cs
+    | tokenize (#">" ::  cs) = Gt :: tokenize cs
+    | tokenize (#"<" :: #"=" :: cs) = Le :: tokenize cs
+    | tokenize (#"<" :: cs) = Lt :: tokenize cs
     | tokenize (#"i" :: #"n" :: cs) = In :: tokenize cs
-    | tokenize (#"+" :: cs) = Plus :: tokenize cs   (* Token for '+' *)
+    | tokenize (#"+" :: cs) = Add :: tokenize cs   (* Token for '+' *)
     | tokenize (#"-" :: #">" :: cs) = Arrow :: tokenize cs
-    | tokenize (#"-" :: cs) = Minus :: tokenize cs  (* Token for '-' *)
-    | tokenize (#"*" :: cs) = Times :: tokenize cs  (* Token for '*' *)
+    | tokenize (#"-" :: cs) = Sub :: tokenize cs  (* Token for '-' *)
+    | tokenize (#"*" :: cs) = Mul :: tokenize cs  (* Token for '*' *)
     | tokenize (#"/" :: cs) = Div :: tokenize cs    (* Token for '/' *)
     | tokenize (#"\\" :: cs) = Lambda :: tokenize cs
     | tokenize (#")" :: []) = RParen :: []
     | tokenize (#"(" :: cs) = LParen :: tokenize cs
     | tokenize (#")" :: cs) = RParen :: tokenize cs
+    | tokenize (#"&" :: #"&" :: cs) = And :: tokenize cs 
+    | tokenize (#"|" :: #"|" :: cs) = Or :: tokenize cs
     | tokenize (#"=" :: cs) = 
     let
         val tokens = tokenize cs
@@ -108,12 +121,20 @@ structure Parser = struct
     | ConstInt of int
     | ConstReal of real
     | Var of string
-    | Eq of Haskell * Haskell
+    | Comp of Haskell * Haskell
+    | Not of Haskell
+    | Gt of Haskell * Haskell 
+    | Ge of Haskell * Haskell 
+    | Lt of Haskell * Haskell 
+    | Le of Haskell * Haskell
     | Implies of Haskell * Haskell
+    | And of Haskell * Haskell
+    | Or of Haskell * Haskell
     | If of Haskell * Haskell * Haskell
-    | Plus of Haskell * Haskell
-    | Minus of Haskell * Haskell
-    | Times of Haskell * Haskell
+    | Add of Haskell * Haskell
+    | Sub of Haskell * Haskell
+    | Mul of Haskell * Haskell
+    | Div of Haskell * Haskell
     | Let of string * Haskell * Haskell
     | Lambda of string * Haskell
     | Fun of string * string list * Haskell * Haskell
@@ -132,10 +153,13 @@ structure Parser = struct
        (* | (Lexemes.Assign, Lexemes.Assign) => ts *)
        | (Lexemes.Eq, Lexemes.Eq)         => ts
        | (Lexemes.Arrow, Lexemes.Arrow)   => ts
+       | (Lexemes.And, Lexemes.And)         => ts
+       | (Lexemes.Or, Lexemes.Or)         => ts
        | (Lexemes.Lambda, Lexemes.Lambda) => ts
-       | (Lexemes.Plus, Lexemes.Plus)     => ts
-       | (Lexemes.Minus, Lexemes.Minus)   => ts
-       | (Lexemes.Times, Lexemes.Times)   => ts
+       | (Lexemes.Add, Lexemes.Add)     => ts
+       | (Lexemes.Sub, Lexemes.Sub)   => ts
+       | (Lexemes.Mul, Lexemes.Mul)   => ts
+       | (Lexemes.Div, Lexemes.Div)   => ts
        | (Lexemes.Comp, Lexemes.Comp)     => ts 
        | (Lexemes.If, Lexemes.If)         => ts 
        | (Lexemes.Then, Lexemes.Then)     => ts 
@@ -148,7 +172,6 @@ structure Parser = struct
     case tokStream of
          (t :: ts) => if t = tok then SOME ts else NONE
        | [] => NONE *)
-
 
     
     fun parser ts =
@@ -195,23 +218,29 @@ structure Parser = struct
                 val (lhs, ts') = parserCall ts
                 fun aux (lhs, ts) =
                     case ts of
-                      Lexemes.Plus :: ts' =>
+                      Lexemes.Add :: ts' =>
                         let
                           val (rhs, ts'') = parserCall ts'
                         in
-                          aux(Plus(lhs, rhs), ts'')
+                          aux(Add(lhs, rhs), ts'')
                         end
-                    | Lexemes.Minus :: ts' =>
+                    | Lexemes.Sub :: ts' =>
                         let
                           val (rhs, ts'') = parserCall ts'
                         in
-                          aux(Minus(lhs, rhs), ts'')
+                          aux(Sub(lhs, rhs), ts'')
                         end
-                    | Lexemes.Times :: ts' =>
+                    | Lexemes.Mul :: ts' =>
                         let
                           val (rhs, ts'') = parserCall ts'
                         in
-                          aux(Times(lhs, rhs), ts'')
+                          aux(Mul(lhs, rhs), ts'')
+                        end
+                    | Lexemes.Div :: ts' =>
+                        let
+                          val (rhs, ts'') = parserCall ts'
+                        in
+                          aux(Div(lhs, rhs), ts'')
                         end
                     | _ => (lhs, ts)
             in
@@ -258,23 +287,80 @@ structure Parser = struct
                 aux (lhs, ts')
             end
 
+        and parserCond ts =
+            let
+              val (lhs, ts') = parserComp ts
+              fun aux (lhs, ts) =
+                    case ts of
+                      Lexemes.And :: ts' =>
+                        let
+                          val (rhs, ts'') = parserComp ts'
+                        in
+                          aux(And(lhs, rhs), ts'')
+                        end
+                    | Lexemes.Or :: ts' =>
+                        let
+                          val (rhs, ts'') = parserComp ts'
+                        in
+                          aux(Or(lhs, rhs), ts'')
+                        end
+                    | _ => (lhs, ts)
+            in
+              aux(lhs, ts')
+            end
+          
         and parserComp ts =
             let
               val (lhs, ts') = parserArithmetic ts
               fun aux (lhs, ts) =
-                case ts of
-                  Lexemes.Comp :: ts' =>
-                    let
-                      val (rhs, ts'') = parserArithmetic ts'
-                    in
-                      aux(Eq(lhs, rhs), ts'')
-                    end
-                | _ => (lhs, ts)
+                    case ts of
+                      Lexemes.Comp :: ts' =>
+                        let
+                          val (rhs, ts'') = parserCall ts'
+                        in
+                          aux(Comp(lhs, rhs), ts'')
+                        end
+                    | Lexemes.Ge :: ts' =>
+                        let
+                          val (rhs, ts'') = parserCall ts'
+                        in
+                          aux(Ge(lhs, rhs), ts'')
+                        end
+                    | Lexemes.Gt :: ts' =>
+                        let
+                          val (rhs, ts'') = parserCall ts'
+                        in
+                          aux(Gt(lhs, rhs), ts'')
+                        end
+                    | Lexemes.Le :: ts' =>
+                        let
+                          val (rhs, ts'') = parserCall ts'
+                        in
+                          aux(Le(lhs, rhs), ts'')
+                        end
+                    | Lexemes.Lt :: ts' =>
+                        let
+                          val (rhs, ts'') = parserCall ts'
+                        in
+                          aux(Lt(lhs, rhs), ts'')
+                        end
+                    | _ => (lhs, ts)
             in
               aux(lhs, ts')
             end
-
         and parserIf (Lexemes.If :: ts) =
+            let
+                val (condition, ts1) = parserCond ts
+                val ts2 = expect Lexemes.Then ts1
+                val (trueBranch, ts3) = parser ts2
+                val ts4 = expect Lexemes.Else ts3
+                val (falseBranch, ts5) = parser ts4
+            in
+                (If(condition, trueBranch, falseBranch), ts5)
+            end
+            | parserIf ts = parserPrimary ts
+
+        (* and parserIf (Lexemes.If :: ts) =
             let
                 val (condition, ts1) = parserComp ts
                 val ts2 = expect Lexemes.Then ts1
@@ -284,7 +370,7 @@ structure Parser = struct
             in
                 (If(condition, trueBranch, falseBranch), ts5)
             end
-            | parserIf ts = parserPrimary ts
+            | parserIf ts = parserPrimary ts *)
         (* Let expressions *)
         and parserLet (Lexemes.Let :: Lexemes.Id name :: Lexemes.Eq :: ts) =
             let
@@ -292,7 +378,7 @@ structure Parser = struct
                   case ts of 
                       Lexemes.Lambda :: _ => parserLambda ts
                     | Lexemes.If :: _ => parserIf ts 
-                    | _ => parserPrimary ts
+                    | _ => parserArithmetic ts
 
                 (* Parse the bound expression *)
                 (* Expect an 'in' token *)
@@ -425,15 +511,125 @@ fun fromFunToLambda([], exp) = exp
   | fromFunToLambda ((x::xs), exp) = Lambda(x, fromFunToLambda(xs, exp))
 
 fun  eval (HaskellType haskellType, _) = SOME haskellType
-  | eval (Var variable, environment) =
-    (case search(variable, environment) of
-      SOME (VariableBinding(_, (expression, associated_environment))) =>
-        eval (expression, associated_environment)
+  | eval (Var var, env) =
+    (case search(var, env) of
+      SOME (VariableBinding(_, (exp, ass_env))) =>
+        eval (exp, ass_env)
     | _ => NONE)
   | eval (ConstInt n, _) = SOME (Integer n)
   | eval (ConstReal n, _) = SOME (RealNumber n)
-  | eval (Eq(a, b), environment) =
-    (case (eval(a, environment), eval(b, environment)) of
+  | eval (Comp(a, b), env) =
+    (case (eval(a, env), eval(b, env)) of
+        (SOME (Integer a), SOME (Integer b)) =>
+          SOME (Boolean (Int.compare(a, b) = EQUAL))
+      | (SOME (RealNumber a), SOME (RealNumber b)) =>
+          SOME (Boolean(Real.compare(a, b) = EQUAL))
+      | (SOME (Integer a), SOME (RealNumber b)) =>
+          SOME (Boolean(Real.compare( Real.fromInt a, b) = EQUAL))
+      | (SOME (RealNumber a), SOME (Integer b)) =>
+          SOME (Boolean(Real.compare(a, Real.fromInt b) = EQUAL))
+      | (SOME (Character a), SOME (Character b)) =>
+          SOME(Boolean (Char.compare(a, b) = EQUAL))
+      | (SOME (Boolean a), SOME (Boolean b)) =>
+          SOME(Boolean (a = b))
+      | _ => NONE)
+  | eval(Not a, env) = 
+    (case eval(a, env) of 
+        (SOME (Boolean a)) => SOME (Boolean (not a))
+        | _ => NONE)
+  | eval (Gt(a, b), env) =
+    (case (eval(a, env), eval(b, env)) of
+        (SOME (Integer a), SOME (Integer b)) =>
+          SOME (Boolean (Int.>(a, b)))
+      | (SOME (RealNumber a), SOME (RealNumber b)) =>
+          SOME (Boolean(Real.>(a, b)))
+      | (SOME (Integer a), SOME (RealNumber b)) =>
+          SOME (Boolean(Real.>( Real.fromInt a, b)))
+      | (SOME (RealNumber a), SOME (Integer b)) =>
+          SOME (Boolean(Real.>(a, Real.fromInt b)))
+      | (SOME (Character a), SOME (Character b)) =>
+          SOME(Boolean (Char.>(a, b)))
+      | _ => NONE)
+  | eval (Ge(a, b), env) =
+    (case (eval(a, env), eval(b, env)) of
+        (SOME (Integer a), SOME (Integer b)) =>
+          SOME (Boolean (Int.>=(a, b)))
+      | (SOME (RealNumber a), SOME (RealNumber b)) =>
+          SOME (Boolean(Real.>=(a, b)))
+      | (SOME (Integer a), SOME (RealNumber b)) =>
+          SOME (Boolean(Real.>=( Real.fromInt a, b)))
+      | (SOME (RealNumber a), SOME (Integer b)) =>
+          SOME (Boolean(Real.>=(a, Real.fromInt b)))
+      | (SOME (Character a), SOME (Character b)) =>
+          SOME(Boolean (Char.>=(a, b)))
+      | _ => NONE)
+  | eval (Lt(a, b), env) =
+    (case (eval(a, env), eval(b, env)) of
+        (SOME (Integer a), SOME (Integer b)) =>
+          SOME (Boolean (Int.<(a, b)))
+      | (SOME (RealNumber a), SOME (RealNumber b)) =>
+          SOME (Boolean(Real.<(a, b)))
+      | (SOME (Integer a), SOME (RealNumber b)) =>
+          SOME (Boolean(Real.<( Real.fromInt a, b)))
+      | (SOME (RealNumber a), SOME (Integer b)) =>
+          SOME (Boolean(Real.<(a, Real.fromInt b)))
+      | (SOME (Character a), SOME (Character b)) =>
+          SOME(Boolean (Char.<(a, b)))
+      | _ => NONE)
+  | eval (Le(a, b), env) =
+    (case (eval(a, env), eval(b, env)) of
+        (SOME (Integer a), SOME (Integer b)) =>
+          SOME (Boolean (Int.<=(a, b)))
+      | (SOME (RealNumber a), SOME (RealNumber b)) =>
+          SOME (Boolean(Real.<=(a, b)))
+      | (SOME (Integer a), SOME (RealNumber b)) =>
+          SOME (Boolean(Real.<=( Real.fromInt a, b)))
+      | (SOME (RealNumber a), SOME (Integer b)) =>
+          SOME (Boolean(Real.<=(a, Real.fromInt b)))
+      | (SOME (Character a), SOME (Character b)) =>
+          SOME(Boolean (Char.<=(a, b)))
+      | _ => NONE)
+  (* | eval (And(a, b), env) =
+    (case (eval(a, env), eval(b, env)) of
+       (SOME (Boolean a), SOME (Boolean b)) =>
+          SOME(Boolean (a andalso b))
+      | _ => NONE)  *)
+  | eval (And(a, b), env) =
+      let
+        val a' = eval(a, env)
+      in
+        case a' of 
+           SOME (Boolean false) => SOME (Boolean false)
+          |SOME (Boolean true) => 
+            let
+              val b' = eval(b, env)
+            in
+              case b' of 
+                  SOME (Boolean false) => SOME (Boolean false)
+                | SOME (Boolean true) => SOME (Boolean true)
+                | _ => NONE
+            end
+          | _ => NONE
+      end
+  | eval(Or(a, b), env) =
+      let
+        val a' = eval(a, env)
+      in
+        case a' of 
+           SOME (Boolean true) => SOME (Boolean true)
+          |SOME (Boolean false) => 
+            let
+              val b' = eval(b, env)
+            in
+              case b' of 
+                  SOME (Boolean false) => SOME (Boolean false)
+                | SOME (Boolean true) => SOME (Boolean true)
+                | _ => NONE
+            end
+          | _ => NONE
+      end
+  (* | eval (Gt(a, b), env) =
+    (case (eval(a, env), eval(b, env)) of
         (SOME (Integer a), SOME (Integer b)) =>
           SOME (Boolean (Int.compare(a, b) = EQUAL))
       | (SOME (RealNumber a), SOME (RealNumber b)) =>
@@ -442,40 +638,50 @@ fun  eval (HaskellType haskellType, _) = SOME haskellType
           SOME(Boolean (Char.compare(a, b) = EQUAL))
       | (SOME (Boolean a), SOME (Boolean b)) =>
           SOME(Boolean (a = b))
-      | _ => NONE) 
-  | eval (Implies(a, b), environment) =
-    (case (eval(a, environment), eval(b, environment)) of
+      | _ => NONE)  *)
+  | eval (Implies(a, b), env) =
+    (case (eval(a, env), eval(b, env)) of
       (SOME (Boolean a), SOME (Boolean b)) => SOME (Boolean (not a orelse b))
     | _ => NONE)
-  | eval (If(condition, conditionTrue, conditionFalse), environment) =
-  let
-    val condition_eval = eval(condition, environment)
-  in
-    case condition_eval of
-        SOME (Boolean true) => eval(conditionTrue, environment)  (* Only evaluate the true branch *)
-      | SOME (Boolean false) => eval(conditionFalse, environment)  (* Only evaluate the false branch *)
-      | _ => NONE
-  end
+  | eval (If(condition, conditionTrue, conditionFalse), env) =
+      let
+        val condition_eval = eval(condition, env)
+      in
+        case condition_eval of
+            SOME (Boolean true) => eval(conditionTrue, env)  (* Only evaluate the true branch *)
+          | SOME (Boolean false) => eval(conditionFalse, env)  (* Only evaluate the false branch *)
+          | _ => NONE
+      end
   (* | eval (Let(variable, expression, scope), environment) =
     eval(scope, VariableBinding(variable, (expression, environment)) :: environment) *)
-  | eval (Plus(x, y), environment) =
-  (case (eval(x, environment), eval(y, environment)) of
+  | eval (Add(x, y), env) =
+  (case (eval(x, env), eval(y, env)) of
       (SOME (Integer x), SOME (Integer y)) => SOME (Integer (x + y))
     | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber (x + y))
     | (SOME (Integer x), SOME (RealNumber y)) => SOME (RealNumber (Real.fromInt x + y))  (* Convert Integer to Real and add *)
     | (SOME (RealNumber x), SOME (Integer y)) => SOME (RealNumber (x + Real.fromInt y))  (* Convert Integer to Real and add *)
     | _ => NONE)
-  | eval (Minus(x, y), environment) =
-    (case (eval(x, environment), eval(y, environment)) of
-        (SOME (Integer x), SOME (Integer y)) => SOME (Integer(x - y))
-      | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber(x - y))
-      | _ => NONE)
-  | eval (Times(x, y), environment) =
-    (case (eval(x, environment), eval(y, environment)) of
-        (SOME (Integer x), SOME (Integer y)) => SOME (Integer(x * y))
-      | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber(x * y))
-      | _ => NONE)
-
+  | eval (Sub(x, y), env) =
+    (case (eval(x, env), eval(y, env)) of
+      (SOME (Integer x), SOME (Integer y)) => SOME (Integer (x - y))
+    | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber (x - y))
+    | (SOME (Integer x), SOME (RealNumber y)) => SOME (RealNumber (Real.fromInt x - y))  (* Convert Integer to Real and add *)
+    | (SOME (RealNumber x), SOME (Integer y)) => SOME (RealNumber (x - Real.fromInt y))  (* Convert Integer to Real and add *)
+    | _ => NONE)
+  | eval (Mul(x, y), env) =
+    (case (eval(x, env), eval(y, env)) of
+      (SOME (Integer x), SOME (Integer y)) => SOME (Integer (x * y))
+    | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber (x * y))
+    | (SOME (Integer x), SOME (RealNumber y)) => SOME (RealNumber (Real.fromInt x * y))  (* Convert Integer to Real and add *)
+    | (SOME (RealNumber x), SOME (Integer y)) => SOME (RealNumber (x * Real.fromInt y))  (* Convert Integer to Real and add *)
+    | _ => NONE)
+  | eval (Div(x, y), env) =
+    (case (eval(x, env), eval(y, env)) of
+      (SOME (Integer x), SOME (Integer y)) => SOME (RealNumber (Real.fromInt x /  Real.fromInt y))
+    | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber (x / y))
+    | (SOME (Integer x), SOME (RealNumber y)) => SOME (RealNumber (Real.fromInt x / y))  (* Convert Integer to Real and add *)
+    | (SOME (RealNumber x), SOME (Integer y)) => SOME (RealNumber (x / Real.fromInt y))  (* Convert Integer to Real and add *)
+    | _ => NONE)
   | eval (Let(var, exp, scope), env) =
     let
       val new_env = env @ [VariableBinding(var, (exp, env))]
@@ -512,7 +718,7 @@ end
 (* val program = "let x = \\y-> 5 in 5" *)
 (* val program = "id x = x" *)
 
-(* fun main () =
+fun main () =
     let
       val userInput = TextIO.inputLine TextIO.stdIn
     in
@@ -528,18 +734,17 @@ end
             main () 
           end
     end;
-main() *)
-  (* Print the input string *)
+main()
 
-val program = "let x = \\a->\\b->\\c-> a + b + c in (((x 5) 6) 7) + 1"
+(* val program = "let x = \\a->\\b->\\c-> a + b + c in (((x 5) 6) 7) + 1" *)
 (* val program = "add a b = a + b" *)
 (* val program = "((x 5) 6)" *)
 (* val program = "\\a->\\b-> a + b" *)
 (* val scoop =Let("y", ConstInt 5, Let("y", Plus(Var "x", Var "x"), Let("x", ConstInt 10, Var "y"))) *)
 (* val program = "add x y = x + y " *)
-(* val program = "let x = if 1+1 == 1 then 1 else 0 in x" *)
+(* val program = "let x = if 1 == 1 && 2 < 3 && 3 < 1 then 1 else 0 in x" *)
 (* val program = "let x = 2 in x + 1" *)
-(* val program = "1 + 1" *)
+(* val program = "let x = 0 - 2 / 1.5 in (x)" *)
 (* val program = "add x y = x + y" *)
 (* val program = "((add x y = x + y) 6)" *)
 (* val program = "((add x y = x + y) 6) 8)" *)
@@ -551,10 +756,11 @@ val program = "let x = \\a->\\b->\\c-> a + b + c in (((x 5) 6) 7) + 1"
 (* val program = "let fact = \\n-> if n == 1 then 1 else n * (fact (n-1)) in (fact 5)" *)
 (* val program = "let fact n = if n == 1 then 1 else n * (fact (n-1)) in fact 2" *)
 (* val program = "let fact n = if n == 1 then 1 else n * (fact (n-1)) in fact 2" *)
+(* val program = "if 0 < 2 && 1 < 2  && 0 > 1 then 1 else 0" *)
 
-val tokens = Lexemes.tokenize (String.explode program)
+(* val tokens = Lexemes.tokenize (String.explode program)
 val (ast, _) = Parser.parser tokens
-val print = Parser.eval(ast, []) 
+val print = Parser.eval(ast, [])  *)
 
 
 
