@@ -410,7 +410,8 @@ structure Parser = struct
         case ts of
         Lexemes.Let :: _ => parserLet ts
        | Lexemes.If  :: _ => parserIf ts
-       | Lexemes.Id t1 :: Lexemes.Id t2 :: Lexemes.Eq :: _  => parserFun ts
+       | Lexemes.Id t1 :: Lexemes.Id t2 :: Lexemes.RParen :: _  => parserArithmetic ts
+       | Lexemes.Id t1 :: Lexemes.Id t2 :: _  => parserFun ts
        | _             => parserArithmetic ts
     end
 
@@ -675,8 +676,11 @@ end
     end;
 main() *)
 
+val program = "let y = (\\x->(x x) \\x->(x x)) in 5"
+(* val program = "let y = (\\x->(x x) \\x->(x x)) in y" *)
 (* val program = "let x = \\a->\\b->\\c-> a + b + c in (((x 5) 6) 7) + 1" *)
-val program = "let y = x a = (x a) in (x a) in (y 5)"
+(* val program = "let y = add x = x+1  in (x y) in (y 5)" *)
+(* val program = "let y = (\\x->(x x) \\x->(x x)) in y" *)
 (* val program = "let y = \\x->5 in y" *)
 (* val program = "add a b = a + b" *)
 (* val program = "((x 5) 6)" *)
@@ -698,8 +702,8 @@ val program = "let y = x a = (x a) in (x a) in (y 5)"
 (* val program = "let fact n = if n == 1 then 1 else n * (fact (n-1)) in fact 2" *)
 (* val program = "let fact n = if n == 1 then 1 else n * (fact (n-1)) in fact 2" *)
 (* val program = "if 0 < 2 && 1 < 2  && 0 > 1 then 1 else 0" *)
-
 (* val program = "let x = let y = 2 in y + 1 in x + y" *)
+
 val tokens = Lexemes.tokenize (String.explode program)
 val (ast, _) = Parser.parser tokens
 val print = Parser.eval(ast, []) 
