@@ -1,32 +1,31 @@
 structure Lexemes = struct
     datatype Lexemes = 
         Let 
-        | Eq                 (* Token for '=' in expressions *)
-        | And 
-        | Or
-        | In                 (* Token for 'in' *)
-        | Arrow              (* Token for '->' *)
-        | Lambda             (* Token for '\' *)
-        | Add               (* Token for '+' *)
-        | Sub              (* Token for '-' *)
-        | Mul              (* Token for '*' *)
-        | Div                (* Token for '/' *)
-        | Id of string       (* Token for identifiers *)
-        | Integer of int         (* Token for integers *)
-        | RealNumber of real       (* Token for real numbers *)
-        | LParen 
-        | RParen
-        | If 
-        | Then 
-        | Else 
-        | Comp
-        | Not
-        | Gt 
-        | Ge 
-        | Lt 
-        | Le 
-
-    (* val program = "let x = 5.3 in add x y = x + y in add 2 3" *)
+        | Eq                  (* Token for '=' *)
+        | And                 (* Token for '&&' *)
+        | Or                  (* Token for '||' *)
+        | In                  (* Token for 'in' *)
+        | Arrow               (* Token for '->' *)
+        | Lambda              (* Token for '\' *)
+        | Add                 (* Token for '+' *)
+        | Sub                 (* Token for '-' *)
+        | Mul                 (* Token for '*' *)
+        | Div                 (* Token for '/' *)
+        | Mod                 (* Token for '%' *)
+        | Id of string        (* Token for identifiers *)
+        | Integer of int      (* Token for integers *)
+        | RealNumber of real  (* Token for real numbers *)
+        | LParen              (* Token for '(' *)
+        | RParen              (* Token for ')' *)
+        | If                  (* Token for 'if' *)
+        | Then                (* Token for 'then' *)
+        | Else                (* Token for 'else' *)
+        | Comp                (* Token for '==' *)
+        | Gt                  (* Token for '>' *)
+        | Ge                  (* Token for '>=' *)
+        | Lt                  (* Token for '<' *)
+        | Le                  (* Token for '<=' *)
+        | Not                 (* Token for 'not' *)
 
     (* Helper function to read a word or identifier *)
     fun readWord ([], w) = (implode (rev w), [])
@@ -80,6 +79,7 @@ structure Lexemes = struct
     | tokenize (#"-" :: cs) = Sub :: tokenize cs  (* Token for '-' *)
     | tokenize (#"*" :: cs) = Mul :: tokenize cs  (* Token for '*' *)
     | tokenize (#"/" :: cs) = Div :: tokenize cs    (* Token for '/' *)
+    | tokenize (#"%" :: cs) = Mod :: tokenize cs    (* Token for '/' *)
     | tokenize (#"\\" :: cs) = Lambda :: tokenize cs
     | tokenize (#")" :: []) = RParen :: []
     | tokenize (#"(" :: cs) = LParen :: tokenize cs
@@ -87,13 +87,6 @@ structure Lexemes = struct
     | tokenize (#"&" :: #"&" :: cs) = And :: tokenize cs 
     | tokenize (#"|" :: #"|" :: cs) = Or :: tokenize cs
     | tokenize (#"=" :: cs) =  Eq :: tokenize cs 
-    (* let
-        val tokens = tokenize cs
-    in
-        case tokens of 
-            (* (Id _ :: Id _ :: _) => Assign :: tokens *)
-           _ => Eq :: tokens
-    end            Else, it's an expression '=' *)
     | tokenize (c :: cs) = 
         if Char.isAlpha c then
             let val (word, rest) = readWord (c :: cs, [])
@@ -135,6 +128,7 @@ structure Parser = struct
     | Sub of Haskell * Haskell
     | Mul of Haskell * Haskell
     | Div of Haskell * Haskell
+    | Mod of Haskell * Haskell
     | Let of string * Haskell * Haskell
     | Lambda of string * Haskell
     | Fun of string * string list * Haskell * Haskell
@@ -234,6 +228,12 @@ structure Parser = struct
                           val (rhs, ts'') = parserCall ts'
                         in
                           aux(Div(lhs, rhs), ts'')
+                        end
+                    | Lexemes.Mod :: ts' =>
+                        let
+                          val (rhs, ts'') = parserCall ts'
+                        in
+                          aux(Mod(lhs, rhs), ts'')
                         end
                     | _ => (lhs, ts)
             in
@@ -598,29 +598,36 @@ fun  eval (HaskellType haskellType, _) = SOME haskellType
   (case (eval(x, env), eval(y, env)) of
       (SOME (Integer x), SOME (Integer y)) => SOME (Integer (x + y))
     | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber (x + y))
-    | (SOME (Integer x), SOME (RealNumber y)) => SOME (RealNumber (Real.fromInt x + y))  (* Convert Integer to Real and add *)
-    | (SOME (RealNumber x), SOME (Integer y)) => SOME (RealNumber (x + Real.fromInt y))  (* Convert Integer to Real and add *)
+    | (SOME (Integer x), SOME (RealNumber y)) => SOME (RealNumber (Real.fromInt x + y))  
+    | (SOME (RealNumber x), SOME (Integer y)) => SOME (RealNumber (x + Real.fromInt y))  
     | _ => NONE)
   | eval (Sub(x, y), env) =
     (case (eval(x, env), eval(y, env)) of
       (SOME (Integer x), SOME (Integer y)) => SOME (Integer (x - y))
     | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber (x - y))
-    | (SOME (Integer x), SOME (RealNumber y)) => SOME (RealNumber (Real.fromInt x - y))  (* Convert Integer to Real and add *)
-    | (SOME (RealNumber x), SOME (Integer y)) => SOME (RealNumber (x - Real.fromInt y))  (* Convert Integer to Real and add *)
+    | (SOME (Integer x), SOME (RealNumber y)) => SOME (RealNumber (Real.fromInt x - y))  
+    | (SOME (RealNumber x), SOME (Integer y)) => SOME (RealNumber (x - Real.fromInt y))  
     | _ => NONE)
   | eval (Mul(x, y), env) =
     (case (eval(x, env), eval(y, env)) of
       (SOME (Integer x), SOME (Integer y)) => SOME (Integer (x * y))
     | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber (x * y))
-    | (SOME (Integer x), SOME (RealNumber y)) => SOME (RealNumber (Real.fromInt x * y))  (* Convert Integer to Real and add *)
-    | (SOME (RealNumber x), SOME (Integer y)) => SOME (RealNumber (x * Real.fromInt y))  (* Convert Integer to Real and add *)
+    | (SOME (Integer x), SOME (RealNumber y)) => SOME (RealNumber (Real.fromInt x * y))  
+    | (SOME (RealNumber x), SOME (Integer y)) => SOME (RealNumber (x * Real.fromInt y))  
     | _ => NONE)
   | eval (Div(x, y), env) =
     (case (eval(x, env), eval(y, env)) of
-      (SOME (Integer x), SOME (Integer y)) => SOME (RealNumber (Real.fromInt x /  Real.fromInt y))
+      (SOME (Integer x), SOME (Integer y)) => SOME (RealNumber (Real.fromInt x / Real.fromInt y))
     | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (RealNumber (x / y))
-    | (SOME (Integer x), SOME (RealNumber y)) => SOME (RealNumber (Real.fromInt x / y))  (* Convert Integer to Real and add *)
-    | (SOME (RealNumber x), SOME (Integer y)) => SOME (RealNumber (x / Real.fromInt y))  (* Convert Integer to Real and add *)
+    | (SOME (Integer x), SOME (RealNumber y)) => SOME (RealNumber (Real.fromInt x / y))  
+    | (SOME (RealNumber x), SOME (Integer y)) => SOME (RealNumber (x / Real.fromInt y))  
+    | _ => NONE)
+  | eval (Mod(x, y), env) =
+    (case (eval(x, env), eval(y, env)) of
+      (SOME (Integer x), SOME (Integer y)) => SOME (Integer ( x mod y))
+    | (SOME (RealNumber x), SOME (RealNumber y)) => SOME (Integer (Real.trunc x mod  Real.trunc y))
+    | (SOME (Integer x), SOME (RealNumber y)) => SOME (Integer (x + Real.trunc y))  
+    | (SOME (RealNumber x), SOME (Integer y)) => SOME (Integer (Real.trunc x + y))  
     | _ => NONE)
   | eval (Let(var, exp, scope), env) =
     let
@@ -648,17 +655,13 @@ fun  eval (HaskellType haskellType, _) = SOME haskellType
       | _ => NONE
   end
 end
-
-
-
-
 (* val program = "let x = 5.3 in let y = \\z -> z in (y 5)" *)
 (* val program = "let y = 5 in let y = x + x in let x = 10 in y" *)
 (* val program = "let y = 10 + y in(y 4)" *)
 (* val program = "let x = \\y-> 5 in 5" *)
 (* val program = "id x = x" *)
 
-(* fun main () =
+fun main () =
     let
       val userInput = TextIO.inputLine TextIO.stdIn
     in
@@ -674,9 +677,9 @@ end
             main () 
           end
     end;
-main() *)
+main()
 
-val program = "let y = (\\x->(x x) \\x->(x x)) in 5"
+(* val program = "let y = (\\x->(x x) \\x->(x x)) in 5" *)
 (* val program = "let y = (\\x->(x x) \\x->(x x)) in y" *)
 (* val program = "let x = \\a->\\b->\\c-> a + b + c in (((x 5) 6) 7) + 1" *)
 (* val program = "let y = add x = x+1  in (x y) in (y 5)" *)
@@ -704,12 +707,9 @@ val program = "let y = (\\x->(x x) \\x->(x x)) in 5"
 (* val program = "if 0 < 2 && 1 < 2  && 0 > 1 then 1 else 0" *)
 (* val program = "let x = let y = 2 in y + 1 in x + y" *)
 
-val tokens = Lexemes.tokenize (String.explode program)
+(* val tokens = Lexemes.tokenize (String.explode program)
 val (ast, _) = Parser.parser tokens
-val print = Parser.eval(ast, []) 
-
-
-
+val print = Parser.eval(ast, [])  *)
 
 (* val env = [] : Parser.Entry list
 val new_env = env @ [Parser.VariableBinding ("a", (Parser.HaskellType(Parser.Integer 5), []))] *)
